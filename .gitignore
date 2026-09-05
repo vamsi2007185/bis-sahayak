@@ -1,0 +1,31 @@
+﻿# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*.class
+
+# Environments
+venv/
+env/
+.venv/
+ENV/
+
+# Environment Variables & Secrets
+.env
+.env.local
+
+# IDEs & OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Ingestion Data & FAISS Indexes (tracked with .gitkeep)
+data/raw_standards/*
+!data/raw_standards/.gitkeep
+data/faiss_index/*
+!data/faiss_index/.gitkeep
+
+# Test & coverage caches
+.pytest_cache/
+.coverage
+htmlcov/

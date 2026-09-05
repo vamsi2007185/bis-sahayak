@@ -1,0 +1,35 @@
+﻿# ==============================================================================
+# BIS Sahayak - Core Dependencies
+# Python Version: 3.10+
+# ==============================================================================
+
+# FastAPI & Web Server Framework
+fastapi==0.111.0
+uvicorn[standard]==0.30.1
+pydantic==2.7.4
+pydantic-settings==2.3.4
+python-multipart==0.0.9
+
+# RAG, Vector Search & Embeddings
+faiss-cpu==1.8.0.post1
+sentence-transformers==3.0.1
+langchain==0.2.6
+langchain-community==0.2.6
+langchain-core==0.2.10
+langchain-huggingface==0.0.3
+pypdf==4.2.0
+tiktoken==0.7.0
+
+# Database & Persistence (PostgreSQL async engine)
+sqlalchemy==2.0.31
+asyncpg==0.29.0
+psycopg2-binary==2.9.9
+
+# Multilingual (Bhashini) & Messaging (WhatsApp Graph API) HTTP Clients
+httpx==0.27.0
+requests==2.32.3
+
+# Utilities & Guardrails
+python-dotenv==1.0.1
+regex==2024.5.15
+loguru==0.7.2
