@@ -1,4 +1,4 @@
-# BIS Sahayak (मानक सहायक) — SIH 2026 Production Monorepo
+# BIS Sahayak  — SIH 2026 Production Monorepo
 ### Multilingual AI Compliance Assistant, 3D CAD Scanner & Citizen Safety Platform for Indian Standards (BIS)
 **Smart India Hackathon 2026 • Category: Smart Automation • Ministry of Consumer Affairs, Food & Public Distribution**
 
@@ -13,7 +13,7 @@
 
 ## 🌟 Executive Summary
 
-**BIS Sahayak (मानक सहायक)** is an intelligent, dual-persona (Consumer & MSME) compliance ecosystem engineered for the **Smart India Hackathon 2026**. It simplifies, validates, and democratizes Indian Standards (Bureau of Indian Standards — BIS) by combining:
+**BIS Sahayak ** is an intelligent, dual-persona (Consumer & MSME) compliance ecosystem engineered for the **Smart India Hackathon 2026**. It simplifies, validates, and democratizes Indian Standards (Bureau of Indian Standards — BIS) by combining:
 1. **Regulated RAG Architecture**: Strict clause citation guardrails with zero hallucination guarantee.
 2. **Automated 3D CAD Scanner**: Instant geometric tolerance verification against published Indian Standards.
 3. **Photo & CM/L Number Verification**: Computer vision and OCR to combat counterfeit ISI marks.
