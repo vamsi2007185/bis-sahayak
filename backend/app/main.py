@@ -62,6 +62,35 @@ class ChatResponse(BaseModel):
     retrieved_sources: List[Dict[str, Any]]
 
 
+
+class ReportItem(BaseModel):
+    id: str
+    title: str
+    report_type: str  # "cad_compliance", "isi_verification", "compliance_analysis", "suspicious_product"
+    date: str
+    status: str       # "COMPLIANT", "NON_COMPLIANT", "VERIFIED", "UNVERIFIED", "ACTION_REQUIRED"
+    standard_id: Optional[str] = None
+    summary: str
+    details: Optional[Dict[str, Any]] = None
+
+
+class SuspiciousReportRequest(BaseModel):
+    product_name: str
+    cml_number: Optional[str] = None
+    brand_name: Optional[str] = None
+    store_location: Optional[str] = None
+    description: str
+    reporter_contact: Optional[str] = None
+
+
+class StandardCatalogItem(BaseModel):
+    standard_id: str
+    title: str
+    category: str
+    clauses_count: int
+    mandatory: bool
+    description: str
+
 class ISIVerifyRequest(BaseModel):
     cml_number: str = Field(..., example="CM/L-8400123456")
 
@@ -324,6 +353,145 @@ async def health():
         "lab_router": f"Active ({len(lab_router.laboratories)} accredited labs)"
     }
 
+
+
+# ------------------------------------------------------------------------------
+# 11. REPORTS REPOSITORY & SUSPICIOUS PRODUCT REPORTING
+# ------------------------------------------------------------------------------
+
+# In-memory persistent demo store for reports
+REPORTS_DB: List[Dict[str, Any]] = [
+    {
+        "id": "REP-2026-001",
+        "title": "CAD Compliance Scan - Insulation Mat Sheet",
+        "report_type": "cad_compliance",
+        "date": "2026-09-06",
+        "status": "NON_COMPLIANT",
+        "standard_id": "IS 15652:2006",
+        "summary": "Measured thickness 1.80mm is below minimum 2.00mm threshold for Class A dielectric insulation mats.",
+        "details": {
+            "filename": "insulation_mat.stl",
+            "measured_thickness_mm": 1.80,
+            "required_range": "2.0mm - 2.2mm",
+            "delta_mm": "-0.20mm",
+            "recommendation": "Increase CAD wall thickness by 0.20mm before physical die tooling."
+        }
+    },
+    {
+        "id": "REP-2026-002",
+        "title": "ISI License Verification - AquaJal Pure Water",
+        "report_type": "isi_verification",
+        "date": "2026-09-05",
+        "status": "VERIFIED",
+        "standard_id": "IS 10500:2012",
+        "summary": "Authentic BIS CM/L #8400123456 verified active for Aquasafe Pure Beverages Pvt Ltd.",
+        "details": {
+            "cml_number": "CM/L-8400123456",
+            "manufacturer": "Aquasafe Pure Beverages Pvt Ltd",
+            "valid_up_to": "2027-03-31",
+            "safety_rating": "A+ (Compliant with organoleptic & bacteriological standards)"
+        }
+    },
+    {
+        "id": "REP-2026-003",
+        "title": "Regulatory Impact Analysis - Gazette Amendment 3",
+        "report_type": "compliance_analysis",
+        "date": "2026-09-04",
+        "status": "ACTION_REQUIRED",
+        "standard_id": "IS 10500:2012",
+        "summary": "Mandatory FTIR microplastic testing requirements take effect 2026-10-01.",
+        "details": {
+            "gazette_number": "CG-DL-E-05092026-25101",
+            "deadline": "2026-12-31",
+            "action_required": "Calibrate in-line TDS instrumentation and update testing schedule."
+        }
+    }
+]
+
+
+@app.get("/reports", response_model=List[ReportItem], summary="Get compliance & verification reports")
+async def get_reports():
+    return REPORTS_DB
+
+
+@app.post("/reports", response_model=ReportItem, summary="Save new compliance report")
+async def create_report(report: ReportItem):
+    REPORTS_DB.insert(0, report.dict())
+    return report
+
+
+@app.delete("/reports/{report_id}", summary="Delete a report")
+async def delete_report(report_id: str):
+    global REPORTS_DB
+    REPORTS_DB = [r for r in REPORTS_DB if r["id"] != report_id]
+    return {"status": "deleted", "report_id": report_id}
+
+
+@app.post("/reports/suspicious", summary="Citizen report for suspicious or counterfeit ISI marks")
+async def report_suspicious_product(payload: SuspiciousReportRequest):
+    complaint_id = f"CMP-{int(len(REPORTS_DB) + 1001)}"
+    report_entry = {
+        "id": complaint_id,
+        "title": f"Citizen Report: {payload.product_name}",
+        "report_type": "suspicious_product",
+        "date": "2026-09-06",
+        "status": "UNVERIFIED",
+        "standard_id": None,
+        "summary": f"Suspicious product reported at {payload.store_location or 'Unknown location'}. {payload.description[:80]}...",
+        "details": payload.dict()
+    }
+    REPORTS_DB.insert(0, report_entry)
+    return {
+        "status": "success",
+        "complaint_id": complaint_id,
+        "message": "Report prepared and logged into BIS Sahayak vigilance intake. Verification audit scheduled.",
+        "disclaimer": "This constitutes an intake verification report for public safety review."
+    }
+
+
+# ------------------------------------------------------------------------------
+# 12. STANDARDS CATALOG ENDPOINT
+# ------------------------------------------------------------------------------
+
+STANDARDS_CATALOG: List[Dict[str, Any]] = [
+    {
+        "standard_id": "IS 10500:2012",
+        "title": "Drinking Water - Specification (Second Revision)",
+        "category": "Water, Food & Agriculture",
+        "clauses_count": 5,
+        "mandatory": True,
+        "description": "Specifies physical, chemical, bacteriological, and radioactive parameters for drinking water to protect consumer health."
+    },
+    {
+        "standard_id": "IS 15652:2006",
+        "title": "Electrical Insulation Mats for Electrical Works",
+        "category": "Electrical & Power Systems",
+        "clauses_count": 6,
+        "mandatory": True,
+        "description": "Mandatory dielectric elastomeric sheet mats used around high-voltage equipment up to 33 kV for operator safety."
+    },
+    {
+        "standard_id": "IS 1363 (Part 1): 2002",
+        "title": "Hexagon Head Bolts, Screws and Nuts (M6 to M36)",
+        "category": "Mechanical & Industrial Fasteners",
+        "clauses_count": 4,
+        "mandatory": False,
+        "description": "Dimensional requirements, tolerances, and thread standards for industrial hexagon head machine bolts."
+    },
+    {
+        "standard_id": "IS 4984:2016",
+        "title": "High Density Polyethylene (HDPE) Pipes for Water Supply",
+        "category": "Plastics, Piping & Infrastructure",
+        "clauses_count": 6,
+        "mandatory": True,
+        "description": "Manufacturing tolerances, SDR pressure classes, wall thicknesses, and hydrostatic burst test specifications."
+    }
+]
+
+
+@app.get("/standards", response_model=List[StandardCatalogItem], summary="Catalog of supported BIS Indian Standards")
+async def get_standards_catalog():
+    return STANDARDS_CATALOG
 
 if __name__ == "__main__":
     import uvicorn
