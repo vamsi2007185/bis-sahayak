@@ -4,14 +4,22 @@ import axios from 'axios';
 const getBaseUrl = () => {
   if (typeof window !== 'undefined') {
     const custom = localStorage.getItem('bis_api_url');
-    if (custom) return custom;
+    if (custom && custom.trim()) return custom.trim().replace(/\/+$/, '');
   }
-  return import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+  const envUrl = import.meta.env.VITE_API_BASE_URL;
+  if (envUrl && envUrl.trim()) return envUrl.trim().replace(/\/+$/, '');
+
+  // When running on public web / GitHub Pages without an explicit backend URL,
+  // do NOT default to localhost:8000 to prevent mixed-content blocking in browsers.
+  if (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+    return '';
+  }
+  return 'http://localhost:8000';
 };
 
 const client = axios.create({
   baseURL: getBaseUrl(),
-  timeout: 5000,
+  timeout: 30000,
 });
 
 // Update client base URL dynamically

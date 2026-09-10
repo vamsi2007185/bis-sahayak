@@ -38,7 +38,9 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(na
 logger = logging.getLogger("BIS_Sahayak_API")
 
 WHATSAPP_VERIFY_TOKEN = os.getenv("WHATSAPP_VERIFY_TOKEN", "bis_sahayak_webhook_token_2026")
-RAW_STANDARDS_DIR = os.getenv("RAW_STANDARDS_DIR", "backend/data/raw_standards")
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DEFAULT_RAW_STANDARDS_DIR = os.path.join(BASE_DIR, "data", "raw_standards")
+RAW_STANDARDS_DIR = os.getenv("RAW_STANDARDS_DIR", DEFAULT_RAW_STANDARDS_DIR)
 
 
 # ------------------------------------------------------------------------------
@@ -151,9 +153,24 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# Production CORS configuration
+DEFAULT_ALLOWED_ORIGINS = [
+    "https://vamsi2007185.github.io",
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "http://localhost:8000",
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:8000",
+]
+
+env_origins = [orig.strip() for orig in os.getenv("ALLOWED_ORIGINS", "").split(",") if orig.strip()]
+allowed_origins = list(set(DEFAULT_ALLOWED_ORIGINS + env_origins))
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
+    allow_origin_regex=r"https://.*\.github\.io",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -495,4 +512,5 @@ async def get_standards_catalog():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
+    port = int(os.getenv("PORT", 8000))
+    uvicorn.run("app.main:app", host="0.0.0.0", port=port, reload=False)

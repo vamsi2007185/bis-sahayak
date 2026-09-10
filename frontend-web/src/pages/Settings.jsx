@@ -112,9 +112,9 @@ export default function Settings() {
             <div className="flex items-center space-x-2">
               <input
                 type="text"
-                defaultValue={localStorage.getItem('bis_api_url') || 'http://localhost:8000'}
+                defaultValue={localStorage.getItem('bis_api_url') || import.meta.env.VITE_API_BASE_URL || ''}
                 id="backendUrlInput"
-                placeholder="http://localhost:8000 or https://your-backend.onrender.com"
+                placeholder={import.meta.env.VITE_API_BASE_URL || "https://your-backend.onrender.com or http://localhost:8000"}
                 className="flex-1 px-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500 font-mono"
               />
               <button

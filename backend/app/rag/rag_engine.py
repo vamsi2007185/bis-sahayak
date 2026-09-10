@@ -20,10 +20,43 @@ from dataclasses import dataclass
 
 import httpx
 from pypdf import PdfReader
-from langchain_community.vectorstores import FAISS
-from langchain_huggingface import HuggingFaceEmbeddings
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.schema import Document
+try:
+    from langchain_community.vectorstores import FAISS
+except ImportError:
+    FAISS = None
+
+try:
+    from langchain_huggingface import HuggingFaceEmbeddings
+except ImportError:
+    try:
+        from langchain_community.embeddings import HuggingFaceEmbeddings
+    except ImportError:
+        HuggingFaceEmbeddings = None
+
+try:
+    from langchain_text_splitters import RecursiveCharacterTextSplitter
+except ImportError:
+    try:
+        from langchain.text_splitter import RecursiveCharacterTextSplitter
+    except ImportError:
+        class RecursiveCharacterTextSplitter:
+            def __init__(self, chunk_size=800, chunk_overlap=100, separators=None):
+                self.chunk_size = chunk_size
+                self.chunk_overlap = chunk_overlap
+            def split_text(self, text):
+                step = max(1, self.chunk_size - self.chunk_overlap)
+                return [text[i:i+self.chunk_size] for i in range(0, len(text), step)]
+
+try:
+    from langchain_core.documents import Document
+except ImportError:
+    try:
+        from langchain.schema import Document
+    except ImportError:
+        class Document:
+            def __init__(self, page_content="", metadata=None):
+                self.page_content = page_content
+                self.metadata = metadata or {}
 
 # Setup structured logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s - %(message)s")
@@ -321,39 +354,55 @@ class BISSemanticChunker:
 
 class BISVectorStoreManager:
     """
-    Manages local FAISS vector store indexing and semantic retrieval.
-    Uses HuggingFace lightweight embedding model for fast, local inference.
+    Manages FAISS vector store indexing and semantic retrieval.
+    Provides production-safe fallback to keyword/semantic token search if PyTorch/FAISS
+    runs in memory-constrained cloud environments (e.g. Render 512MB RAM tier).
     """
     def __init__(
         self,
         index_dir: str = "data/faiss_index",
         model_name: str = "sentence-transformers/all-MiniLM-L6-v2"
     ):
-        self.index_dir = index_dir
+        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        if not os.path.isabs(index_dir):
+            candidate = os.path.join(base_dir, index_dir)
+            self.index_dir = candidate if os.path.exists(os.path.dirname(candidate)) else os.path.abspath(index_dir)
+        else:
+            self.index_dir = index_dir
+
         self.model_name = model_name
-        os.makedirs(self.index_dir, exist_ok=True)
-        
-        logger.info(f"Configuring Embedding Model: {self.model_name}")
+        try:
+            os.makedirs(self.index_dir, exist_ok=True)
+        except Exception:
+            pass
+
         self._embeddings = None
+        self._use_fallback = False
+        self._fallback_docs: List[Document] = []
         self.vector_store: Optional[FAISS] = None
         self._load_existing_index()
 
     @property
     def embeddings(self):
-        """Lazy loading of sentence transformers to optimize startup."""
-        if self._embeddings is None:
-            logger.info(f"Loading HuggingFace Embeddings ({self.model_name})...")
-            self._embeddings = HuggingFaceEmbeddings(
-                model_name=self.model_name,
-                model_kwargs={"device": "cpu"},
-                encode_kwargs={"normalize_embeddings": True}
-            )
+        """Safe lazy loading of embeddings."""
+        if self._embeddings is None and not self._use_fallback:
+            try:
+                logger.info(f"Loading HuggingFace Embeddings ({self.model_name})...")
+                self._embeddings = HuggingFaceEmbeddings(
+                    model_name=self.model_name,
+                    model_kwargs={"device": "cpu"},
+                    encode_kwargs={"normalize_embeddings": True}
+                )
+            except Exception as e:
+                logger.warning(f"Could not initialize HuggingFaceEmbeddings ({e}). Enabling resilient in-memory semantic retriever.")
+                self._use_fallback = True
+                self._embeddings = None
         return self._embeddings
 
     def _load_existing_index(self):
         """Loads FAISS index from disk if available."""
         index_file = os.path.join(self.index_dir, "index.faiss")
-        if os.path.exists(index_file):
+        if os.path.exists(index_file) and self.embeddings:
             try:
                 self.vector_store = FAISS.load_local(
                     self.index_dir,
@@ -362,15 +411,14 @@ class BISVectorStoreManager:
                 )
                 logger.info(f"Successfully loaded existing FAISS index from '{self.index_dir}'.")
             except Exception as e:
-                logger.error(f"Failed to load existing FAISS index: {e}")
+                logger.warning(f"Could not load FAISS index ({e}). Using resilient in-memory index.")
                 self.vector_store = None
         else:
-            logger.info("No existing FAISS index found. Ready for new standard ingestion.")
+            self.vector_store = None
 
     def add_chunks(self, chunks: List[BISClauseChunk]):
-        """Embeds and persists BIS chunks into the local FAISS index."""
+        """Persists BIS chunks into FAISS with fallback memory store."""
         if not chunks:
-            logger.warning("No chunks provided to index.")
             return
 
         documents = [
@@ -378,22 +426,62 @@ class BISVectorStoreManager:
             for chunk in chunks
         ]
 
-        if self.vector_store is None:
-            self.vector_store = FAISS.from_documents(documents, self.embeddings)
-        else:
-            self.vector_store.add_documents(documents)
+        # Always register in in-memory fallback list
+        existing_ids = {d.metadata.get("chunk_id") for d in self._fallback_docs}
+        for doc in documents:
+            if doc.metadata.get("chunk_id") not in existing_ids:
+                self._fallback_docs.append(doc)
 
-        # Save to disk
-        self.vector_store.save_local(self.index_dir)
-        logger.info(f"Saved updated FAISS index to '{self.index_dir}'. Total items indexed: {len(documents)}")
+        # Attempt to add to FAISS if available
+        if not self._use_fallback and self.embeddings:
+            try:
+                if self.vector_store is None:
+                    self.vector_store = FAISS.from_documents(documents, self.embeddings)
+                else:
+                    self.vector_store.add_documents(documents)
+                try:
+                    self.vector_store.save_local(self.index_dir)
+                except Exception:
+                    pass
+                logger.info(f"FAISS index updated. Total items indexed: {len(documents)}")
+                return
+            except Exception as e:
+                logger.warning(f"FAISS indexing failed ({e}). Retaining in-memory documents.")
+                self._use_fallback = True
+
+        logger.info(f"Retained {len(self._fallback_docs)} documents in resilient regulatory memory store.")
 
     def similarity_search(self, query: str, top_k: int = 4) -> List[Document]:
-        """Retrieves top-K relevant chunks with similarity score."""
-        if self.vector_store is None:
-            logger.warning("Vector store is empty! Returning empty search results.")
+        """Retrieves top-K relevant chunks with dual-mode support (FAISS or weighted token matcher)."""
+        if self.vector_store is not None and not self._use_fallback:
+            try:
+                return self.vector_store.similarity_search(query, k=top_k)
+            except Exception as e:
+                logger.warning(f"FAISS search failed ({e}); falling back to resilient in-memory retrieval.")
+
+        if not self._fallback_docs:
             return []
-        
-        return self.vector_store.similarity_search(query, k=top_k)
+
+        # Token-weighted scoring for fallback retrieval
+        q_tokens = re.findall(r"\w+", (query or "").lower())
+        if not q_tokens:
+            return self._fallback_docs[:top_k]
+
+        scored = []
+        for doc in self._fallback_docs:
+            content_lower = (doc.page_content or "").lower()
+            meta_lower = str(doc.metadata).lower()
+            score = 0
+            for token in q_tokens:
+                if len(token) > 2:
+                    if token in meta_lower:
+                        score += 3
+                    if token in content_lower:
+                        score += 1
+            scored.append((score, doc))
+
+        scored.sort(key=lambda x: x[0], reverse=True)
+        return [doc for score, doc in scored[:top_k]]
 
 
 # ------------------------------------------------------------------------------
@@ -496,7 +584,7 @@ class BISQueryRouter:
     Routes queries end-to-end:
     1. Language Detection & Bhashini translation (Indic -> English).
     2. FAISS Top-K context retrieval.
-    3. LLM generation with strict citation prompt engineering.
+    3. LLM generation (Groq, OpenAI, Ollama, or dynamic clause synthesizer).
     4. Citation Guardrail verification.
     5. Reverse translation (English -> Source Indic language) if necessary.
     """
@@ -505,19 +593,33 @@ class BISQueryRouter:
         vector_manager: BISVectorStoreManager,
         translator: BhashiniTranslator,
         guardrail: CitationGuardrail,
-        llm_api_base: str = "http://localhost:11434/v1",
-        llm_api_key: str = "ollama",
-        llm_model: str = "llama3"
+        llm_api_base: Optional[str] = None,
+        llm_api_key: Optional[str] = None,
+        llm_model: Optional[str] = None
     ):
         self.vector_manager = vector_manager
         self.translator = translator
         self.guardrail = guardrail
-        self.llm_api_base = llm_api_base.rstrip("/")
-        self.llm_api_key = llm_api_key
-        self.llm_model = llm_model
+
+        # Auto-configure Groq or OpenAI cloud LLM if environment variables exist
+        groq_key = os.getenv("GROQ_API_KEY")
+        openai_key = os.getenv("OPENAI_API_KEY")
+
+        if groq_key:
+            self.llm_api_base = (llm_api_base or os.getenv("LLM_API_BASE", "https://api.groq.com/openai/v1")).rstrip("/")
+            self.llm_api_key = llm_api_key or groq_key
+            self.llm_model = llm_model or os.getenv("LLM_MODEL_NAME", "llama-3.1-8b-instant")
+        elif openai_key:
+            self.llm_api_base = (llm_api_base or os.getenv("LLM_API_BASE", "https://api.openai.com/v1")).rstrip("/")
+            self.llm_api_key = llm_api_key or openai_key
+            self.llm_model = llm_model or os.getenv("LLM_MODEL_NAME", "gpt-4o-mini")
+        else:
+            self.llm_api_base = (llm_api_base or os.getenv("LLM_API_BASE", "http://localhost:11434/v1")).rstrip("/")
+            self.llm_api_key = llm_api_key or os.getenv("LLM_API_KEY", "ollama")
+            self.llm_model = llm_model or os.getenv("LLM_MODEL_NAME", "llama3")
 
     async def _call_llm(self, prompt: str, system_message: str, retrieved_docs: List[Document] = None) -> str:
-        """Invokes OpenAI-compatible API (Ollama, vLLM, Groq, LiteLLM) with dynamic fallback."""
+        """Invokes OpenAI-compatible API with fail-fast connect and factual fallback."""
         payload = {
             "model": self.llm_model,
             "messages": [
@@ -531,8 +633,10 @@ class BISQueryRouter:
             "Content-Type": "application/json"
         }
 
+        # Use fast connect timeout (3s) so unreachable local Ollama doesn't hang in cloud production
+        timeout = httpx.Timeout(connect=3.0, read=25.0, write=5.0, pool=5.0)
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
+            async with httpx.AsyncClient(timeout=timeout) as client:
                 res = await client.post(
                     f"{self.llm_api_base}/chat/completions",
                     json=payload,
@@ -541,8 +645,8 @@ class BISQueryRouter:
                 if res.status_code == 200:
                     data = res.json()
                     return data["choices"][0]["message"]["content"]
-        except Exception:
-            pass
+        except Exception as e:
+            logger.info(f"External LLM offline or unreachable ({e}); applying dynamic BIS clause synthesizer.")
 
         return self._fallback_context_synthesizer(prompt, retrieved_docs)
 
