@@ -103,7 +103,7 @@ class ISIVerifyRequest(BaseModel):
 
 def seed_sample_data():
     """Initializes sample BIS standards if vector database is fresh."""
-    if faiss_manager.vector_store is None:
+    if faiss_manager.vector_store is None and len(faiss_manager._fallback_docs) == 0:
         logger.info("Initializing vector store with foundational BIS Standards...")
         sample_chunks = [
             BISClauseChunk(
@@ -361,11 +361,20 @@ async def whatsapp_receive(request: Request, background_tasks: BackgroundTasks):
 
 @app.get("/health")
 async def health():
+    mode = "lightweight" if getattr(faiss_manager, "is_lightweight_mode", False) else "full_embeddings"
+    if faiss_manager.vector_store:
+        v_status = "FAISS (Ready)"
+    elif getattr(faiss_manager, "_fallback_docs", None):
+        v_status = f"Lightweight Store ({len(faiss_manager._fallback_docs)} clauses cached)"
+    else:
+        v_status = "Empty"
+
     return {
         "status": "healthy",
         "service": "BIS Sahayak Core (SIH 2026)",
         "version": "2.0.0",
-        "vector_store": "FAISS (Ready)" if faiss_manager.vector_store else "Empty",
+        "mode": mode,
+        "vector_store": v_status,
         "cad_engine": "Active",
         "lab_router": f"Active ({len(lab_router.laboratories)} accredited labs)"
     }

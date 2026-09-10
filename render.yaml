@@ -12,6 +12,8 @@ services:
         value: 3.11.9
       - key: ENVIRONMENT
         value: production
+      - key: BIS_LIGHTWEIGHT_MODE
+        value: "true"
       - key: ALLOWED_ORIGINS
         value: https://vamsi2007185.github.io,http://localhost:5173
       - key: GROQ_API_KEY

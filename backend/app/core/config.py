@@ -23,6 +23,12 @@ class Settings(BaseSettings):
         "https://vamsi2007185.github.io,http://localhost:5173,http://localhost:3000,http://localhost:8000"
     )
 
+    # Lightweight Mode (True by default on Render/cloud to fit within 512 MiB RAM)
+    BIS_LIGHTWEIGHT_MODE: bool = os.getenv(
+        "BIS_LIGHTWEIGHT_MODE",
+        "true" if os.getenv("RENDER") or os.getenv("ENVIRONMENT") == "production" else "false"
+    ).lower() in ("true", "1", "yes", "on")
+
     # FAISS & Embeddings
     FAISS_INDEX_PATH: str = os.getenv("FAISS_INDEX_PATH", "data/faiss_index")
     EMBEDDING_MODEL_NAME: str = os.getenv("EMBEDDING_MODEL_NAME", "sentence-transformers/all-MiniLM-L6-v2")
