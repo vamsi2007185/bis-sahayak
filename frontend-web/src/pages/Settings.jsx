@@ -85,17 +85,65 @@ export default function Settings() {
           </div>
         </div>
 
-        {/* Demo Mode Notice */}
-        <div className="bg-blue-50 border border-blue-200 p-5 rounded-2xl text-blue-950 space-y-2">
-          <div className="flex items-center space-x-2 font-bold text-sm text-blue-900">
-            <Info className="w-4 h-4 text-blue-700" />
-            <span>SIH 2026 Demonstration Configuration</span>
-          </div>
-          <p className="text-[11px] text-blue-900 leading-relaxed">
-            The platform is running in Smart India Hackathon Demonstration Mode. Core RAG queries, 3D CAD mesh parsing, photo OCR, and Haversine lab calculations are processed locally on the FastAPI backend without external cloud bottlenecks.
+        {/* Backend & Deployment Configuration */}
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+          <h3 className="font-bold text-sm text-slate-900 flex items-center space-x-2">
+            <Shield className="w-4 h-4 text-blue-600" />
+            <span>Compliance Engine & API Endpoint</span>
+          </h3>
+          <p className="text-slate-500">
+            When running on GitHub Pages, the platform automatically utilizes its built-in Autonomous Regulatory Engine to deliver instant BIS standards citations and compliance guidance without requiring an active cloud server.
           </p>
-          <div className="text-[10px] font-mono text-blue-800 bg-blue-100/60 p-2 rounded-lg mt-2">
-            Backend Endpoint: http://localhost:8000 • Database: PostgreSQL / Local Registry • FAISS CPU
+
+          <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between text-emerald-950">
+            <div className="flex items-center space-x-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+              <span className="font-semibold text-xs">Autonomous Regulatory Engine: Active</span>
+            </div>
+            <span className="text-[10px] bg-emerald-200/80 text-emerald-900 font-mono px-2 py-0.5 rounded-full">
+              Zero Latency Fallback
+            </span>
+          </div>
+
+          <div className="space-y-1.5 pt-1">
+            <label className="text-[11px] font-semibold text-slate-700 block">
+              Optional Cloud or Local Backend URL:
+            </label>
+            <div className="flex items-center space-x-2">
+              <input
+                type="text"
+                defaultValue={localStorage.getItem('bis_api_url') || 'http://localhost:8000'}
+                id="backendUrlInput"
+                placeholder="http://localhost:8000 or https://your-backend.onrender.com"
+                className="flex-1 px-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500 font-mono"
+              />
+              <button
+                onClick={() => {
+                  const val = document.getElementById('backendUrlInput')?.value?.trim();
+                  if (val) {
+                    localStorage.setItem('bis_api_url', val);
+                    alert('Backend endpoint updated to: ' + val);
+                    window.location.reload();
+                  }
+                }}
+                className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium text-xs transition-colors"
+              >
+                Save
+              </button>
+              <button
+                onClick={() => {
+                  localStorage.removeItem('bis_api_url');
+                  alert('Reset to default endpoint.');
+                  window.location.reload();
+                }}
+                className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-medium text-xs transition-colors"
+              >
+                Reset
+              </button>
+            </div>
+            <span className="text-[10px] text-slate-400 block">
+              If running locally, start your server with: <code className="bg-slate-100 px-1 py-0.5 rounded font-mono text-slate-700">uvicorn app.main:app --reload</code>
+            </span>
           </div>
         </div>
 

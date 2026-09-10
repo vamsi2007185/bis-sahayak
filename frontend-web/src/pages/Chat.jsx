@@ -177,7 +177,14 @@ export default function Chat() {
                   </span>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     {m.citations.map((c, i) => (
-                      <CitationCard key={i} citation={c.citation} standardId={c.citation} verified={true} />
+                      <CitationCard
+                        key={i}
+                        citation={c.citation || c.standard}
+                        standardId={c.standard || c.citation}
+                        clause={c.clause}
+                        title={c.title}
+                        verified={true}
+                      />
                     ))}
                   </div>
                 </div>
